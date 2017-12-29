@@ -4,19 +4,16 @@
   "private": true,
   "dependencies": {
     "axios": "^0.17.1",
+    "flatpickr": "^4.1.4",
     "install": "^0.10.2",
+    "moment": "^2.20.1",
     "node-sass-chokidar": "^0.0.3",
     "npm": "^5.6.0",
     "npm-run-all": "^4.1.2",
     "react": "^16.2.0",
     "react-dom": "^16.2.0",
     "react-scripts": "1.0.17",
-    "string_decoder": "^1.0.3",
-    "styled-components": "^2.4.0",
-    "xml2js": "^0.4.19",
-    "xml2json": "^0.11.0",
-    "yr-lib": "^1.0.20",
-    "yr.no-interface": "^1.1.0"
+    "styled-components": "^2.4.0"
   },
   "scripts": {
     "build-css": "node-sass-chokidar src/ -o src/",

@@ -1,7 +1,9 @@
 import React, { Component } from 'react';
 import styled from 'styled-components';
 import axios from 'axios';
+import moment from 'moment';
 
+import BarLoader from './BarLoader';
 
 
 class Map extends Component {
@@ -11,6 +13,7 @@ class Map extends Component {
         this.state = {
             markers: [],
         };
+        this.domain = 'http://pogoda.forde.pl';
     }
 
     componentDidMount() {
@@ -18,14 +21,16 @@ class Map extends Component {
     }
 
     componentWillReceiveProps(newProps) {
-        const directions = newProps.directions;
-        this._showDirections(directions);
+        const { directions, departureDate } = newProps;
+        if(directions) {
+            this._showDirections(directions, departureDate);
+        }
     }
 
     _loadMapScript() {
-        window.initMap = this._initMap.bind(this);
+        window.googleMapsInitCallback = this._googleMapsInitCallback.bind(this);
         const apiKey = 'AIzaSyAEFAVXsJzMdYNN1qLTMgDqDWnhBnpwSeY';
-        const src = 'https://maps.googleapis.com/maps/api/js?key='+apiKey+'&callback=initMap';
+        const src = 'https://maps.googleapis.com/maps/api/js?key='+apiKey+'&callback=googleMapsInitCallback&libraries=places';
         const ref = window.document.getElementsByTagName("script")[0];
         const script = window.document.createElement("script");
         script.src = src;
@@ -33,14 +38,13 @@ class Map extends Component {
         ref.parentNode.insertBefore(script, ref);
     }
     
-    _initMap() {
+    _googleMapsInitCallback() {
         const google = window.google;
 
         require('./../epoly');
 
         this.directionsService = new google.maps.DirectionsService();
         this.directionsDisplay = new google.maps.DirectionsRenderer({suppressMarkers:true, suppressPolylines: true});
-        //this.infoWindow = new google.maps.InfoWindow();
 
         if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(position => {
@@ -48,30 +52,41 @@ class Map extends Component {
                     lat: position.coords.latitude,
                     lng: position.coords.longitude
                 };
-                this.map = new google.maps.Map(document.getElementById('map') , {
-                    center: pos,
-                    zoom: 12,
-                    draggable: true,
-                });
-                                
+                this._initMap(pos, 12);
             }, () => {
               //handleLocationError(true, infoWindow, map.getCenter());
+              this._initMap();
             });
         } else {
             //bowser does not support geolocation
+            this._initMap();
         }
     }
 
-    _showDirections(directions) { 
+    _initMap(pos = {lat: 52.4580841, lng: 19.4169861}, zoom = 6) {
+        const google = window.google;
+
+        this.map = new google.maps.Map(document.getElementById('map') , {
+            center: pos,
+            zoom: zoom,
+            draggable: true,
+        });
+
+        if(this.props.onMapReady) this.props.onMapReady(); 
+    }
+
+    _showDirections(directions, date) { 
         this._removeAllMarkers();
-        
+
+        const departure = date ? moment(date, 'DD-MM-YYYY').toDate() : new Date();
+
         this.directionsDisplay.setMap(this.map);
         this.directionsService.route({
             origin: directions.from,
             destination: directions.to,
             travelMode: 'DRIVING',
             drivingOptions: {
-                departureTime: new Date(), // for the time N milliseconds from now.
+                departureTime: departure,
                 trafficModel: 'bestguess' // pessimistic | optimistic
             }
         }, (response, status) => {
@@ -154,23 +169,26 @@ class Map extends Component {
             const infoWindowContent = 'sprawdzam pogodę ...';
             const marker = this._createMarker(latLng, icon, infoWindowContent, true);
 
-            axios.get('http://pogoda.local/test.php?lat='+latLng.lat()+'&lng='+latLng.lng())
+            axios.get(this.domain+'/api/weather/index.php?lat='+latLng.lat()+'&lng='+latLng.lng())
                 .then(res => {
                     console.log(res);
                     if(res.data.product) {
                         const times = res.data.product.time;
+
+                        if(this.props.departureDate && this.props.departureDate !== moment().format('DD-MM-YYYY')) {
+                            const futureForecast = times.reduce((acc, item) => {
+                                console.log(item['@attributes'].from)
+                            }, '')
+                        }
+
                         const iconUrl = 'http://api.met.no/weatherapi/weathericon/1.1/?symbol='+times[1].location.symbol['@attributes'].number+';content_type=image/png';
-                        //cloudiness['@attributes'].percent
-                        //fog['@attributes'].percent
-                        //humidity['@attributes'].value
-                        //pressure['@attributes'].value && unit
-                        //windSpeed['@attributes'].mps
+                        const windSpeed = (Number(times[0].location.windSpeed['@attributes'].mps) * 3.6).toFixed(1);
                         marker.infoWindowContent = '\
                             <div class="iw">\
                                 <img class="iw-icon" src="'+iconUrl+'" alt="icon" />\
                                 <span class="iw-temp">'+times[0].location.temperature['@attributes'].value+' &#8451;</span>\
                                 <div class="iw-clouds">Zachmurzenie: <span>'+times[0].location.cloudiness['@attributes'].percent+' %<span></div>\
-                                <div class="iw-wind">Wiatr: <span>'+times[0].location.windSpeed['@attributes'].mps+' mps<span></div>\
+                                <div class="iw-wind">Wiatr: <span>'+windSpeed+' km/h<span></div>\
                                 <div class="iw-fog">Mgła: <span>'+times[0].location.fog['@attributes'].percent+' %<span></div>\
                                 <div class="iw-hum">Wilgotność: <span>'+times[0].location.humidity['@attributes'].value+' %<span></div>\
                                 <div class="iw-pres">Ciśnienie: <span>'+times[0].location.pressure['@attributes'].value+' '+times[0].location.pressure['@attributes'].unit+'<span></div>\
@@ -187,7 +205,6 @@ class Map extends Component {
 
     _positionFromRoutePercentage(percentage) {
         const distance = (percentage/100) * this.totalDist;
-        //const time = ((percentage/100) * this.totalTime/60).toFixed(2);
         return this.polyline.GetPointAtDistance(distance);
     }
     
@@ -218,50 +235,13 @@ class Map extends Component {
         return marker;
     }
 
-    /*_processRoute(route) {
-        const legs = route.routes[0].legs[0];
-        //console.log(legs);
-
-        const spread = 10000;
-        let spreadDist = 0;
-        const spreadPoints = legs.steps.reduce((acc, step, i) => {
-            spreadDist += step.distance.value;
-            if(i === 0 || i === legs.steps.length-1) return [...acc, step];
-            if(spreadDist > spread * (acc.length-1)) return [...acc, step];
-            return acc;
-        },[]);
-        //console.log(spreadPoints);
-
-        const google = window.google;
-        for (let i = 0; i < spreadPoints.length; i++) {
-            let marker = new google.maps.Marker;
-            marker.setMap(this.map);
-            marker.setPosition(spreadPoints[i].start_location);
-            
-            const lat = spreadPoints[i].start_location.lat();
-            const lng = spreadPoints[i].start_location.lng();
-            
-            axios.get('http://pogoda.local/test.php?lat='+lat+'&lng='+lng)
-                .then(res => {
-                    console.log(res);
-                    if(res.data.product) {
-                        const forecast = res.data.product.time[0];
-                        console.log(forecast);
-
-                        google.maps.event.addListener(marker, 'click', () => {
-                            this.infoWindow.setContent(forecast.location.temperature['@attributes'].value);
-                            this.infoWindow.open(this.map, marker);
-                        });
-
-                    }
-                });
-        }
-    }*/
-
     render() {
         return(
             <MapContainer id="map">
-                <span>Loading map based on your current location</span>
+                <Loader>
+                    <p>Sprawdzam lokalizację</p>
+                    <BarLoader />
+                </Loader>
             </MapContainer>
         );
     }
@@ -280,3 +260,17 @@ const MapContainer = styled.div`
     justify-content:center;
     flex-direction: column;
 `;
+
+const Loader = styled.div`
+    background:#fff;
+    max-width:90%;
+    min-width: 320px;
+    position:relative;
+    text-align:center;
+    p {
+        margin-bottom: 20px;
+        font-weight: 300;
+        -webkit-font-smoothing: antialiased;
+        font-size: 20px;
+    }
+`
