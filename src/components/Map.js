@@ -13,7 +13,7 @@ class Map extends Component {
         this.state = {
             markers: [],
         };
-        this.domain = 'http://pogoda.forde.pl';
+        this.domain = 'https://natrasie.herokuapp.com';
     }
 
     componentDidMount() {
